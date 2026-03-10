@@ -1,4 +1,4 @@
-# Lynn Wang's Engineering Blog 🚀
+# Lynn's Blog 🚀
 
 Welcome to my personal technical blog. This is a space where I explore software engineering, system design, and the process of building reliable applications.
 

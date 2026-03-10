@@ -23,4 +23,3 @@ I'm always open to discussing technology and engineering challenges. Feel free t
 
 - [LinkedIn](http://www.linkedin.com/in/tiandanlin-wang)
 - [GitHub](https://github.com/lrdinsu)
-- [Email](mailto:lynntdlwang@gmail.com)
