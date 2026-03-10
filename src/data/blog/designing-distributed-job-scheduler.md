@@ -15,7 +15,7 @@ description: "Architectural decisions, trade-offs, and the blueprint behind buil
 
 Two questions keep distributed systems engineers up at night: how do you guarantee that two parallel workers never process the same job simultaneously, and what happens to a job that was 80% complete when the worker handling it suddenly crashes?
 
-I decided to stop wondering and build **[Workron](https://github.com/lrdinsu/workron)** — a job scheduler from scratch — to find out. This post is not a step-by-step code tutorial. It is more of a blueprint — the architectural decisions I made before writing a single line of code, the trade-offs I faced, and why I chose the patterns I did.
+I decided to stop wondering and build **[Workron](https://github.com/lrdinsu/workron)**, a job scheduler from scratch to find out. This post is not a step-by-step code tutorial. It is more of a blueprint: the architectural decisions I made before writing a single line of code, the trade-offs I faced, and why I chose the patterns I did.
 
 
 ---
