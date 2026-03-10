@@ -55,11 +55,11 @@ Once the monolithic queue is solid, the architecture splits into two separate bi
 
 ```
 ┌─────────────────────┐         ┌──────────────────────┐
-│      Scheduler      │         │       Workers         │
-│                     │  HTTP   │                       │
-│  REST API           │◄───────►│  Worker Process A     │
-│  Job Store (DB)     │         │  Worker Process B     │
-│  Heartbeat Monitor  │         │  Worker Process C     │
+│      Scheduler      │         │       Workers        │
+│                     │  HTTP   │                      │
+│  REST API           │◄───────►│  Worker Process A    │
+│  Job Store (DB)     │         │  Worker Process B    │
+│  Heartbeat Monitor  │         │  Worker Process C    │
 └─────────────────────┘         └──────────────────────┘
     Source of truth                  Any machine
 ```
@@ -118,9 +118,9 @@ Workron uses a **heartbeat mechanism** instead. While processing a job, the work
 ```
 Worker                              Scheduler
   │                                     │
-  │── POST /jobs/:id/heartbeat ─────────►│  records timestamp
+  │── POST /jobs/:id/heartbeat ────────►│  records timestamp
   │                        (every 5s)   │
-  │── POST /jobs/:id/heartbeat ─────────►│  records timestamp
+  │── POST /jobs/:id/heartbeat ────────►│  records timestamp
   │                                     │
   │  [worker crashes]                   │
   │                                     │  background checker:
