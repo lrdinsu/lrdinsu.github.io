@@ -14,9 +14,9 @@ tags:
 description: "How to build a job queue where multiple goroutines compete for work without stepping on each other — mutex-protected maps, atomic claiming, and retry logic."
 ---
 
-In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the phased roadmap from a single-process queue to a distributed system. 
+In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system. 
 
-Phases 1 and 2 tackle what I think is the hardest concurrency problem in a job scheduler: how do N goroutines share one queue without ever processing the same job twice? Everything runs in a single Go process. No network. No database. Just goroutines, a shared map, and a mutex standing between correctness and chaos.
+The first two iterations tackle what I think is the hardest concurrency problem in a job scheduler: how do N goroutines share one queue without ever processing the same job twice? Everything runs in a single Go process. No network. No database. Just goroutines, a shared map, and a mutex standing between correctness and chaos.
 
 Full code source: [Workron](github.com/lrdinsu/workron)
 
@@ -179,7 +179,7 @@ func (w *Worker) process(job *store.Job) {
 
 When a job fails and has attempts remaining, it goes back to `pending`. The next time any worker calls `ClaimJob`, this job is eligible again. The `Attempts` field, which was incremented during claiming, ensures the job eventually exhausts its retries and lands in `failed` permanently.
 
-One subtlety: the worker decides whether to retry, not the store. The store just records state transitions. This separation matters because in Phase 3, when workers communicate over HTTP, the retry decision moves to the scheduler. The worker simply reports "this failed" and the scheduler decides what to do next. Keeping the store dumb makes that migration easier.
+One subtlety: the worker decides whether to retry, not the store. The store just records state transitions. This separation matters when workers communicate over HTTP, the retry decision moves to the scheduler. The worker simply reports "this failed" and the scheduler decides what to do next. Keeping the store dumb makes that migration easier.
 
 ---
 
@@ -271,13 +271,13 @@ wg.Wait() // wait for in-progress jobs to finish
 
 `context.WithCancel` propagates the shutdown signal to every worker. Each worker finishes whatever job it is currently processing, then exits its polling loop. `sync.WaitGroup` ensures the main goroutine does not exit until every worker has confirmed it is done.
 
-This is important: we do not kill workers mid-job. A job that was halfway through execution completes normally. Only *idle* workers (waiting on the ticker) exit immediately. This prevents the exact problem that Phase 4's heartbeat system will later detect: orphaned jobs stuck in `running` forever.
+This is important: we do not kill workers mid-job. A job that was halfway through execution completes normally. Only *idle* workers (waiting on the ticker) exit immediately. 
 
 ---
 
 ## What This Gets Right and What It Defers
 
-After Phases 1 and 2, Workron can accept jobs over HTTP, execute them concurrently across multiple workers, retry transient failures, and shut down without losing in-progress work. The race detector confirms no data races under contention.
+Workron can accept jobs over HTTP, execute them concurrently across multiple workers, retry transient failures, and shut down without losing in-progress work. The race detector confirms no data races under contention.
 
 What it cannot do yet: survive a process restart (all state is in memory), detect a crashed worker (no heartbeats), or coordinate across multiple machines (everything is in one process).
 

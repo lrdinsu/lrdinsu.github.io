@@ -94,7 +94,7 @@ Mutex + Map approach (job keeps identity):
  Worker   ◄── Store.ClaimJob() ─── atomically sets status: running
 ```
 
-The mutex approach also has a clean migration path. The logic for claiming a job atomically, lock, find a pending job, update its status, unlock, maps almost identically to how a relational database handles an atomic `UPDATE ... WHERE status = 'pending' LIMIT 1`. When Workron moves to PostgreSQL in a later phase, the core claim logic will not change, only where the data lives.
+The mutex approach also has a clean migration path. The logic for claiming a job atomically, lock, find a pending job, update its status, unlock, maps almost identically to how a relational database handles an atomic `UPDATE ... WHERE status = 'pending' LIMIT 1`. When Workron moves to SQLite later, the core claim logic will not change, only where the data lives.
 
 The honest cost of this choice: workers have to poll the store periodically rather than being pushed to work instantly. A channel-based approach wakes workers up the moment a job arrives. With mutex polling, there is a small latency between job submission and execution. For Workron's use case, orchestrating background jobs, not microsecond trading, this is an acceptable trade-off.
 
@@ -135,17 +135,19 @@ One subtle failure mode worth noting: what if the heartbeat packet is delayed by
 ---
 
 ## The Implementation Roadmap
-
-Each phase has a single engineering challenge that it exists to solve:
-
-- **Phase 1–2** — Atomic job claiming with mutex-protected state. The question: how do N goroutines share one queue without stepping on each other?
-- **Phase 3** — Splitting into two binaries. The question: how do two processes coordinate without shared memory?
-- **Phase 4** — Heartbeat failure detection. The question: how does the scheduler know a worker is dead without the worker telling it?
-- **Phase 5** — Database persistence. The question: how does the system survive a complete scheduler restart without losing job state?
-- **Phase 6** — Cron scheduling, priority queues, and DAG dependencies. The question: how do you model complex real-world workflows?
+- **Concurrent monolith** — Atomic job claiming with mutex-protected state.
+  The question: how do N goroutines share one queue without stepping on each other?
+- **The distributed split** — Separating into two binaries.
+  The question: how do two processes coordinate without shared memory?
+- **Failure detection** — Heartbeat-based monitoring.
+  The question: how does the scheduler know a worker is dead without the worker telling it?
+- **Persistence** — Database-backed storage.
+  The question: how does the system survive a complete scheduler restart without losing job state?
+- **Advanced scheduling** — Cron scheduling, priority queues, and DAG dependencies.
+  The question: how do you model complex real-world workflows?
 
 ---
 
 ## What's Next
 
-The next post dives into the code for Phases 1 and 2, specifically, how to implement the `ClaimJob()` function using `sync.RWMutex` to guarantee that no two goroutines ever process the same job, and how to wire it to a live REST API you can test with curl from day one.
+The next post dives into the code for Concurrent monolith, specifically, how to implement the `ClaimJob()` function using `sync.RWMutex` to guarantee that no two goroutines ever process the same job, and how to wire it to a live REST API you can test with curl from day one.
