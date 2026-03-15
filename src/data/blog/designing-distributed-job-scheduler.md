@@ -1,6 +1,7 @@
 ---
 author: Lynn Wang
-pubDatetime: 2026-03-09T10:00:00Z
+pubDatetime: 2026-02-17T10:00:00Z
+modDatetime: 2026-03-09T14:45:00Z
 title: "Before the Code: Designing a Distributed Job Scheduler in Go"
 slug: designing-distributed-job-scheduler-go
 featured: true
@@ -151,3 +152,13 @@ One subtle failure mode worth noting: what if the heartbeat packet is delayed by
 ## What's Next
 
 The next post dives into the code for Concurrent monolith, specifically, how to implement the `ClaimJob()` function using `sync.RWMutex` to guarantee that no two goroutines ever process the same job, and how to wire it to a live REST API you can test with curl from day one.
+
+---
+
+## References and Further Reading
+
+- [Go Wiki: Mutex or Channel?](https://go.dev/wiki/MutexOrChannel) — The official Go wiki's guidance on when to use mutexes vs channels. Workron's choice of a mutex-protected map over channels aligns with their recommendation for protecting shared state.
+- [How we designed Dropbox ATF: an async task framework](https://dropbox.tech/infrastructure/asynchronous-task-scheduling-at-dropbox) — Dropbox's engineering blog on their Async Task Framework, which handles 10,000+ tasks per second. ATF uses a similar callback-based architecture with at-least-once delivery guarantees and heartbeat monitoring — the same patterns Workron implements at a smaller scale.
+- [Sidekiq Wiki: Reliability](https://github.com/sidekiq/sidekiq/wiki/Reliability) — How Sidekiq Pro handles orphaned jobs using heartbeats and Redis. Their `super_fetch` mechanism uses a 60-second heartbeat expiry to detect dead workers, similar to Workron's 30-second approach.
+- [Design a Distributed Job Scheduler](https://blog.algomaster.io/p/design-a-distributed-job-scheduler) — A system design walkthrough covering job segmentation, coordinator patterns, and worker failure detection at scale.
+- [Apache Airflow Architecture Overview](https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/overview.html) — Airflow's scheduler/worker/DAG model is the most well-known reference architecture for job orchestration. Workron's eventual DAG support (planned) draws from this model.

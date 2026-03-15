@@ -282,3 +282,14 @@ Workron can accept jobs over HTTP, execute them concurrently across multiple wor
 What it cannot do yet: survive a process restart (all state is in memory), detect a crashed worker (no heartbeats), or coordinate across multiple machines (everything is in one process).
 
 The [next post](/posts/splitting-and-surviving-failures-workron) tackles those limitations. The scheduler and workers split into separate binaries communicating over HTTP instead of shared memory — and once they are separate, a new problem emerges: what happens when a worker dies mid-job with no one watching? The answer involves an interface with two methods, a background goroutine, and a 30-second timeout.
+
+---
+
+## References and Further Reading
+
+- [Introducing the Go Race Detector](https://go.dev/blog/race-detector) — The official Go blog post on the race detector. Workron uses `go test -race` to verify that concurrent job claiming has no data races.
+- [Data Race Detector](https://go.dev/doc/articles/race_detector) — Go's official documentation on the race detector, including common data race patterns and how to detect them. Several of the patterns listed (unprotected map access, race on loop counter) were relevant during Workron's development.
+- [Go Concurrency Patterns](https://go.dev/talks/2012/concurrency.slide) — Rob Pike's foundational talk on Go concurrency. The polling worker loop in Workron uses the `select` + ticker pattern described here.
+- [Share Memory By Communicating](https://go.dev/blog/codelab-share) — The Go blog post that explains the proverb Workron deliberately goes against. Worth reading to understand why channels are the default recommendation, and when mutexes are the better choice.
+- [Go `sync` package documentation](https://pkg.go.dev/sync) — Official docs for `sync.Mutex` and `sync.RWMutex`, the primitives protecting Workron's job store.
+- [Go 1.22 enhanced `ServeMux` routing](https://go.dev/blog/routing-enhancements) — The routing improvements in Go 1.22 that let Workron use `"POST /jobs"` and `"GET /jobs/{id}"` patterns without a third-party router.
