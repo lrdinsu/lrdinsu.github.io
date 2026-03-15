@@ -1,6 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-03-13T10:00:00Z
+modDatetime: 2026-03-14T23:20:00Z
 title: "Building the Concurrent Monolith: Atomic Job Claiming in Go"
 slug: building-concurrent-monolith-atomic-job-claiming-go
 featured: true
@@ -280,4 +281,4 @@ After Phases 1 and 2, Workron can accept jobs over HTTP, execute them concurrent
 
 What it cannot do yet: survive a process restart (all state is in memory), detect a crashed worker (no heartbeats), or coordinate across multiple machines (everything is in one process).
 
-The [next post](/posts/splitting-into-two-binaries-workron) tackles that last limitation. The scheduler and workers split into separate binaries, communicating over HTTP instead of shared memory. The interesting design challenge: how do you make the worker code work identically whether it is talking to a local store or a remote scheduler? The answer is an interface with exactly two methods.
+The [next post](/posts/splitting-and-surviving-failures-workron) tackles those limitations. The scheduler and workers split into separate binaries communicating over HTTP instead of shared memory — and once they are separate, a new problem emerges: what happens when a worker dies mid-job with no one watching? The answer involves an interface with two methods, a background goroutine, and a 30-second timeout.
