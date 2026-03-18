@@ -1,6 +1,7 @@
 ---
 author: Lynn Wang
-pubDatetime: 2026-03-18T10:00:00Z
+pubDatetime: 2026-03-17T10:00:00Z
+modDatetime: 2026-03-18T02:20:00Z
 title: "Splitting and Surviving Failures: HTTP Workers and Heartbeat Detection in Go"
 slug: splitting-and-surviving-failures-workron
 featured: true
@@ -330,7 +331,7 @@ After these changes, Workron handles the full lifecycle of a distributed job:
 
 The system tolerates worker crashes without human intervention. No job gets stuck in `running` forever.
 
-What it still cannot do: survive a *scheduler* crash. All job state lives in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) solves that with SQLite, swapping the in-memory store for a database without changing a single line of business logic.
+What it still cannot do: survive a *scheduler* crash. All job state lives in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
 
 ---
 
