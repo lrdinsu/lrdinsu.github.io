@@ -1,7 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-03-17T10:00:00Z
-modDatetime: 2026-03-18T02:20:00Z
+modDatetime: 2026-03-18T14:20:00Z
 title: "Splitting and Surviving Failures: HTTP Workers and Heartbeat Detection in Go"
 slug: splitting-and-surviving-failures-workron
 featured: true
@@ -16,7 +16,7 @@ description: "Splitting Workron into separate binaries, then solving the harder 
 
 In the [previous post](/posts/building-concurrent-monolith-atomic-job-claiming-go), Workron was a single Go process: a REST API, a shared job store, and a pool of worker goroutines all living in the same memory space. The mutex guaranteed correctness. Everything was simple.
 
-This post breaks that simplicity on purpose. The scheduler and workers split into separate binaries communicating over HTTP. Then, once they are separate, a harder problem appears: what happens when a worker crashes mid-job and never reports back?
+This post breaks that simplicity on purpose. The scheduler and workers split into separate binaries communicating over HTTP. Then, once they are separated, a harder problem appears: what happens when a worker crashes mid-job and never reports back?
 
 ---
 
@@ -331,7 +331,7 @@ After these changes, Workron handles the full lifecycle of a distributed job:
 
 The system tolerates worker crashes without human intervention. No job gets stuck in `running` forever.
 
-What it still cannot do: survive a *scheduler* crash. All job state lives in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
+What it still cannot do: survive a *scheduler* crash. All job states live in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
 
 ---
 
@@ -339,7 +339,7 @@ What it still cannot do: survive a *scheduler* crash. All job state lives in mem
 
 - [How we designed Dropbox ATF: an async task framework](https://dropbox.tech/infrastructure/asynchronous-task-scheduling-at-dropbox) — Dropbox's ATF uses a heartbeat and status controller (HSC) that monitors executor liveness during task execution. Workron's heartbeat goroutine + reaper pattern is a simplified version of this approach.
 - [Sidekiq Wiki: Reliability](https://github.com/sidekiq/sidekiq/wiki/Reliability) — Sidekiq Pro's `super_fetch` detects orphaned jobs by checking if a worker's heartbeat key has expired in Redis (60-second TTL). The recovery mechanism re-queues jobs from dead workers' private queues — conceptually identical to Workron's reaper re-queuing jobs with stale heartbeats.
-- [Designing a Distributed Job Scheduler (PhonePe Clockwork)](https://snehasishroy.com/deep-dive-of-the-distributed-job-scheduler-that-powers-over-2-billion-daily-jobs-at-phonepe) — PhonePe's Clockwork processes 2 billion daily jobs using a similar architecture: job acceptor, scheduler, executor, and heartbeat monitor. Their fault tolerance approach parallels Workron's at production scale.
+- [Designing a Distributed Job Scheduler (PhonePe Clockwork)](https://snehasishroy.com/deep-dive-of-the-distributed-job-scheduler-that-powers-over-2-billion-daily-jobs-at-phonepe) — PhonePe's Clockwork processes 2 billion daily jobs using a similar architecture: job acceptor, scheduler, executor, and heartbeat monitor. Their fault tolerance approach parallels Workron's at a production scale.
 - [From Cron to Distributed Schedulers](https://itnext.io/from-cron-to-distributed-schedulers-scaling-job-execution-to-thousands-of-jobs-per-second-ef05955bf3d9) — A progressive walkthrough of evolving a scheduler from single-machine cron to distributed architecture. Covers the same journey Workron takes: shared-memory concurrency → network coordination → failure detection.
 - [Go `net/http/httptest` package](https://pkg.go.dev/net/http/httptest) — Official docs for the test server used in Workron's client integration tests. The `httptest.NewServer` pattern lets you test HTTP clients against a real server without network setup.
 - [Go `context` package](https://pkg.go.dev/context) — Official docs for the context package. Workron uses `context.WithCancel` extensively: for worker shutdown, heartbeat goroutine lifecycle, and reaper termination.
