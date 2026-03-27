@@ -247,6 +247,8 @@ Submit → Persist → Claim → Execute → Heartbeat → Done
 
 What it cannot do yet: model relationships between jobs. If step 2 depends on step 1 finishing first, there is no way to express that. The [next post](/posts/dag-dependencies-workron) adds this piece: DAG-based job dependencies. Jobs declare what they depend on, the scheduler validates the graph at submission time, and downstream jobs only become claimable once all their upstream dependencies complete.
 
+Full source: [Workron](https://github.com/lrdinsu/workron)
+
 ---
 
 ## References and Further Reading

@@ -153,6 +153,8 @@ One subtle failure mode worth noting: what if the heartbeat packet is delayed by
 
 The next post dives into the code for Concurrent monolith, specifically, how to implement the `ClaimJob()` function using `sync.RWMutex` to guarantee that no two goroutines ever process the same job, and how to wire it to a live REST API you can test with curl from day one.
 
+Full source: [Workron](https://github.com/lrdinsu/workron)
+
 ---
 
 ## References and Further Reading

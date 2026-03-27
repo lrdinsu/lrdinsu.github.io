@@ -333,6 +333,8 @@ The system tolerates worker crashes without human intervention. No job gets stuc
 
 What it still cannot do: survive a *scheduler* crash. All job states live in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
 
+Full source: [Workron](https://github.com/lrdinsu/workron)
+
 ---
 
 ## References and Further Reading

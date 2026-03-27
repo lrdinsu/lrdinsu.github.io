@@ -283,6 +283,8 @@ What it cannot do yet: survive a process restart (all state is in memory), detec
 
 The [next post](/posts/splitting-and-surviving-failures-workron) tackles those limitations. The scheduler and workers split into separate binaries communicating over HTTP instead of shared memory. Once they are separate, a new problem emerges: what happens when a worker dies mid-job with no one watching? The answer involves an interface with two methods, a background goroutine, and a 30-second timeout.
 
+Full source: [Workron](https://github.com/lrdinsu/workron)
+
 ---
 
 ## References and Further Reading
