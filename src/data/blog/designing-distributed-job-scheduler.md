@@ -1,7 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-02-17T10:00:00Z
-modDatetime: 2026-03-09T14:45:00Z
+modDatetime: 2026-03-08T14:45:00Z
 title: "Before the Code: Designing a Distributed Job Scheduler in Go"
 slug: designing-distributed-job-scheduler-go
 featured: true
