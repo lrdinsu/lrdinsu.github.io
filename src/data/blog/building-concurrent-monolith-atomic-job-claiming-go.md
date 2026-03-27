@@ -11,7 +11,7 @@ tags:
   - go
   - concurrency
   - engineering-tradeoffs
-description: "How to build a job queue where multiple goroutines compete for work without stepping on each other — mutex-protected maps, atomic claiming, and retry logic."
+description: "How to build a job queue where multiple goroutines compete for work without stepping on each other, mutex-protected maps, atomic claiming, and retry logic."
 ---
 
 In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system. 
@@ -158,7 +158,7 @@ Using `sh -c` means the executor supports pipes, redirects, and shell built-ins.
 
 ## Retry Logic: Giving Jobs a Second Chance
 
-Not every failure is permanent. A network blip, a temporary disk full condition, a transient dependency being unavailable — these all resolve themselves. Workron gives every job three attempts by default.
+Not every failure is permanent. A network blip, a temporary disk full condition, a transient dependency being unavailable, these all resolve themselves. Workron gives every job three attempts by default.
 
 The retry decision happens in the worker's `process` method:
 
@@ -281,7 +281,7 @@ Workron can accept jobs over HTTP, execute them concurrently across multiple wor
 
 What it cannot do yet: survive a process restart (all state is in memory), detect a crashed worker (no heartbeats), or coordinate across multiple machines (everything is in one process).
 
-The [next post](/posts/splitting-and-surviving-failures-workron) tackles those limitations. The scheduler and workers split into separate binaries communicating over HTTP instead of shared memory — and once they are separate, a new problem emerges: what happens when a worker dies mid-job with no one watching? The answer involves an interface with two methods, a background goroutine, and a 30-second timeout.
+The [next post](/posts/splitting-and-surviving-failures-workron) tackles those limitations. The scheduler and workers split into separate binaries communicating over HTTP instead of shared memory. Once they are separate, a new problem emerges: what happens when a worker dies mid-job with no one watching? The answer involves an interface with two methods, a background goroutine, and a 30-second timeout.
 
 ---
 
