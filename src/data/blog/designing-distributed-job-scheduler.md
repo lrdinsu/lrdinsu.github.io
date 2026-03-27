@@ -18,7 +18,6 @@ Two questions keep distributed systems engineers up at night: how do you guarant
 
 I decided to stop wondering and build **[Workron](https://github.com/lrdinsu/workron)**, a job scheduler from scratch to find out. This post is not a step-by-step code tutorial. It is more of a blueprint: the architectural decisions I made before writing a single line of code, the trade-offs I faced, and why I chose the patterns I did.
 
-
 ---
 
 ## Why Build This?
@@ -74,7 +73,7 @@ Architecture is mostly a series of trade-offs disguised as decisions. Here are t
 
 ### 1. Channels vs. Mutexes
 
-Go is famous for its concurrency proverb: *"Do not communicate by sharing memory; instead, share memory by communicating"*, meaning prefer channels. For a job scheduler, I explicitly chose the opposite: a shared map protected by a `sync.RWMutex`. Here is why.
+Go is famous for its concurrency proverb: _"Do not communicate by sharing memory; instead, share memory by communicating"_, meaning prefer channels. For a job scheduler, I explicitly chose the opposite: a shared map protected by a `sync.RWMutex`. Here is why.
 
 Channels are fundamentally black boxes. If you push 100 jobs into a Go channel, a job loses its identity the moment it enters. You cannot build a `GET /jobs/:id` API endpoint to query the status of a specific job, because the job is now an anonymous value flowing through a pipe. You cannot list all running jobs, retry a specific failed job, or inspect what a worker is currently doing.
 
@@ -136,6 +135,7 @@ One subtle failure mode worth noting: what if the heartbeat packet is delayed by
 ---
 
 ## The Implementation Roadmap
+
 - **Concurrent monolith** — Atomic job claiming with mutex-protected state.
   The question: how do N goroutines share one queue without stepping on each other?
 - **The distributed split** — Separating into two binaries.

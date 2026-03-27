@@ -228,6 +228,7 @@ And that was really all it took: one `if` block in `main.go`. The server, the wo
 This was a decision I made early in the project, before I knew exactly what the second backend would look like. The initial `JobStore` interface only included `AddJob`, `ClaimJob`, `GetJob`, and `UpdateJobStatus`. As the scheduler grew, I added methods such as `ListJobs`, `UpdateHeartbeat`, and `ListRunningJobs`. But the basic idea stayed the same: define a clear contract, implement it twice, and choose the implementation at the top level.
 
 What I like most is that this part worked the way I had hoped. There was no need for adapter layers, no temporary shims, and no moment where I had to step back and restructure everything. It was a small payoff from making the abstraction clean early on. Interface design can feel unexciting at first, but moments like this are when it proves its value.
+
 ## What We Have Now
 
 Workron can now:

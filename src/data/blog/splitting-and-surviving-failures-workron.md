@@ -91,7 +91,7 @@ func (c *SchedulerClient) ClaimJob() (*store.Job, bool) {
 
 Two things worth noting about this compared to the in-process version.
 
-**No copy is needed.** In the monolithic store, `ClaimJob` returns a deep copy to prevent workers from holding a pointer into the shared map. Over HTTP, `json.Decode` creates an entirely new `Job` struct from the response bytes. The network serialization *is* the copy.
+**No copy is needed.** In the monolithic store, `ClaimJob` returns a deep copy to prevent workers from holding a pointer into the shared map. Over HTTP, `json.Decode` creates an entirely new `Job` struct from the response bytes. The network serialization _is_ the copy.
 
 **Atomicity moves to the server.** When multiple remote workers call `GET /jobs/next` concurrently, each request hits the scheduler's `handleClaimJob` handler, which calls `MemoryStore.ClaimJob()`, which holds the mutex. The atomicity boundary moved from "mutex in shared memory" to "HTTP request to a single server." The workers do not coordinate with each other at all. They just race to the scheduler, and the scheduler serializes their claims.
 
@@ -136,7 +136,7 @@ In the monolith, if a worker goroutine panicked, Go's runtime handled it. The pr
 
 Now imagine: a worker process claims a job, starts executing it, and the machine loses power. The scheduler still shows the job as `running`. No one is working on it. No one will ever report it as done or failed. Without intervention, it stays `running` forever.
 
-This is the fundamental challenge of distributed systems. In a single process, a crash is total. Across processes, a crash can be *partial*, and partial failure is much harder to reason about.
+This is the fundamental challenge of distributed systems. In a single process, a crash is total. Across processes, a crash can be _partial_, and partial failure is much harder to reason about.
 
 ---
 
@@ -331,7 +331,7 @@ After these changes, Workron handles the full lifecycle of a distributed job:
 
 The system tolerates worker crashes without human intervention. No job gets stuck in `running` forever.
 
-What it still cannot do: survive a *scheduler* crash. All job states live in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
+What it still cannot do: survive a _scheduler_ crash. All job states live in memory. Kill the scheduler process and everything is gone. The [next post](/posts/persisting-jobs-with-sqlite-workron) adds SQLite persistence, swapping the in-memory store for a database without changing a single line of business logic. Along the way, SQLite's concurrency model turns out to be more surprising than the persistence itself.
 
 Full source: [Workron](https://github.com/lrdinsu/workron)
 
@@ -339,9 +339,9 @@ Full source: [Workron](https://github.com/lrdinsu/workron)
 
 ## References and Further Reading
 
-- [How we designed Dropbox ATF: an async task framework](https://dropbox.tech/infrastructure/asynchronous-task-scheduling-at-dropbox) —  Dropbox’s ATF uses heartbeat-based liveness monitoring during task execution. It was a useful reference for Workron’s heartbeat goroutine and reaper design.
+- [How we designed Dropbox ATF: an async task framework](https://dropbox.tech/infrastructure/asynchronous-task-scheduling-at-dropbox) — Dropbox’s ATF uses heartbeat-based liveness monitoring during task execution. It was a useful reference for Workron’s heartbeat goroutine and reaper design.
 - [Sidekiq Wiki: Reliability](https://github.com/sidekiq/sidekiq/wiki/Reliability) — Describes how Sidekiq detects orphaned jobs and recovers work from dead workers. This was a helpful reference for stale-heartbeat detection and job re-queuing in Workron.
 - [Designing a Distributed Job Scheduler (PhonePe Clockwork)](https://snehasishroy.com/deep-dive-of-the-distributed-job-scheduler-that-powers-over-2-billion-daily-jobs-at-phonepe) — A production-scale scheduler architecture covering job acceptance, scheduling, execution, and heartbeat monitoring. It provides a useful large-scale reference point for Workron’s design.
-- [From Cron to Distributed Schedulers](https://itnext.io/from-cron-to-distributed-schedulers-scaling-job-execution-to-thousands-of-jobs-per-second-ef05955bf3d9) —  A walkthrough of how job execution systems evolve from single-machine scheduling to distributed coordination. It maps well to the progression of Workron so far.
+- [From Cron to Distributed Schedulers](https://itnext.io/from-cron-to-distributed-schedulers-scaling-job-execution-to-thousands-of-jobs-per-second-ef05955bf3d9) — A walkthrough of how job execution systems evolve from single-machine scheduling to distributed coordination. It maps well to the progression of Workron so far.
 - [Go `net/http/httptest` package](https://pkg.go.dev/net/http/httptest) — Official documentation for the test server used in Workron’s client integration tests. The `httptest.NewServer` pattern makes it easy to test HTTP clients against a real server in process.
 - [Go `context` package](https://pkg.go.dev/context) — Official documentation for Go’s context package. Workron uses `context.WithCancel` for worker shutdown, heartbeat lifecycle management, and reaper termination.

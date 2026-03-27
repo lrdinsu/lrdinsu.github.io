@@ -14,7 +14,7 @@ tags:
 description: "How to build a job queue where multiple goroutines compete for work without stepping on each other, mutex-protected maps, atomic claiming, and retry logic."
 ---
 
-In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system. 
+In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system.
 
 The first two iterations tackle what I think is the hardest concurrency problem in a job scheduler: how do N goroutines share one queue without ever processing the same job twice? Everything runs in a single Go process. No network. No database. Just goroutines, a shared map, and a mutex standing between correctness and chaos.
 
@@ -152,7 +152,7 @@ func (e *Executor) Execute(command string) error {
 }
 ```
 
-Using `sh -c` means the executor supports pipes, redirects, and shell built-ins. `CombinedOutput` captures both stdout and stderr, which gets attached to the error message on failure. This is critical for debugging: when a job fails, you want to know *why*, not just that it failed.
+Using `sh -c` means the executor supports pipes, redirects, and shell built-ins. `CombinedOutput` captures both stdout and stderr, which gets attached to the error message on failure. This is critical for debugging: when a job fails, you want to know _why_, not just that it failed.
 
 ---
 
@@ -271,7 +271,7 @@ wg.Wait() // wait for in-progress jobs to finish
 
 `context.WithCancel` propagates the shutdown signal to every worker. Each worker finishes whatever job it is currently processing, then exits its polling loop. `sync.WaitGroup` ensures the main goroutine does not exit until every worker has confirmed it is done.
 
-This is important: we do not kill workers mid-job. A job that was halfway through execution completes normally. Only *idle* workers (waiting on the ticker) exit immediately. 
+This is important: we do not kill workers mid-job. A job that was halfway through execution completes normally. Only _idle_ workers (waiting on the ticker) exit immediately.
 
 ---
 

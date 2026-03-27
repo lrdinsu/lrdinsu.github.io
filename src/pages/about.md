@@ -16,7 +16,7 @@ My technical interests and the primary topics of this blog include:
 - **Reliable Applications:** Techniques for creating robust, resilient, and maintainable software.
 
 I started this blog to bridge the gap between abstract concepts and practical implementation.
- Whether you're a fellow engineer or just curious about how complex systems work, I hope you find these insights valuable.
+Whether you're a fellow engineer or just curious about how complex systems work, I hope you find these insights valuable.
 
 ## Connect with me
 
