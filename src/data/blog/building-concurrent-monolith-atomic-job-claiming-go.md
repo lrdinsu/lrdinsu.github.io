@@ -14,7 +14,7 @@ tags:
 description: "How to build a job queue where multiple goroutines compete for work without stepping on each other, mutex-protected maps, atomic claiming, and retry logic."
 ---
 
-In my [previous post](/posts/designing-distributed-job-scheduler-go), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system.
+In my [previous post](/workron/intro), I built the architectural blueprint for Workron: the trade-offs between channels and mutexes, why I chose HTTP over gRPC, and the roadmap from a single-process queue to a distributed system.
 
 The first two iterations tackle what I think is the hardest concurrency problem in a job scheduler: how do N goroutines share one queue without ever processing the same job twice? Everything runs in a single Go process. No network. No database. Just goroutines, a shared map, and a mutex standing between correctness and chaos.
 

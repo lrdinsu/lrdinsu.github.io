@@ -14,6 +14,9 @@ import { SITE } from "./src/config";
 // https://astro.build/config
 export default defineConfig({
   site: SITE.website,
+  redirects: {
+    "/posts/designing-distributed-job-scheduler-go": "/workron/intro",
+  },
   integrations: [
     sitemap({
       filter: page => SITE.showArchives || !page.endsWith("/archives"),
