@@ -1,6 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-04-28T10:00:00Z
+modDatetime: 2026-05-05T10:00:00Z
 title: "Draining the Gang: Coordinated Preemption with Checkpoint/Resume"
 slug: gang-preemption-workron
 featured: true
@@ -214,6 +215,22 @@ A few things I got wrong in the first draft:
 **Checkpoints during `running`.** The first interface allowed saves any time a job was `running`. It seemed like a useful generalization, as periodic saves, not just drain-window saves. But it raises questions: which checkpoint surfaces on re-claim if there are multiple? What if the job saves every minute and the row bloats? Restricting saves to `preempting` avoids all of that. The window where a checkpoint actually matters is exactly the window when a job is being told to stop. That is when you want to save. Anything else is out of scope until there is a concrete reason to add it.
 
 **`buildGangEnv` scoped to gang claims.** The env-building function started as a gang-specific helper because checkpoint injection was gang-specific. Then it became clear: a non-gang job can also have a checkpoint from a previous preemption round if it later gets gang-scheduled and preempted. Renamed to `buildJobEnv`, called on every claim, injects `CHECKPOINT_DATA` whenever there are stored bytes. Straightforward fix once the assumption was noticed.
+
+## Deploying to Kubernetes and Watching It Actually Drain
+
+Everything above ran on a single-process scheduler with workers as goroutines. The gang-preemption tests cover the state machine, but they don't exercise the network — no JSON serialization, no service discovery, no two scheduler replicas fighting over a real Postgres advisory lock. Until I packaged the system into a Kubernetes cluster, the multi-scheduler coordination story was a code review, not a demo.
+
+So I deployed it to a local Kubernetes cluster (kind): scheduler as a 2-replica `Deployment` coordinated by `pg_try_advisory_xact_lock`, three worker pods polling over an in-cluster Service, Postgres as a `StatefulSet`, all wired up via Kustomize manifests. The same drain code runs unchanged. `make k8s-up` brings the stack up; `make k8s-demo` submits a 3-task `demo:sleep 60` gang, fails one task, watches the siblings drain (each emits a 94-byte synthetic checkpoint), and waits for the gang to be re-admitted. On the next claim, all three workers log the field that proves resume happened:
+
+```
+"job picked up" attempt=1 checkpoint_data_present=true checkpoint_data_bytes=101
+```
+
+The 101 bytes is the original 94 plus base64 padding, exactly what the scheduler is supposed to inject as `CHECKPOINT_DATA`. End-to-end runtime: about 50 seconds, all running inside real Kubernetes pods.
+
+![Workron gang-preemption demo running in a kind cluster](https://github.com/lrdinsu/workron/raw/main/docs/k8s-demo.gif)
+
+The demo found a real bug, and it found it in a way the unit tests couldn't have. The worker decodes heartbeat responses into `store.HeartbeatResult`, which originally had no JSON tags. The server emits snake_case (`{"action":"preempt","preemption_epoch":5}`), and Go's `encoding/json` falls back to case-insensitive matching when no tag is present. That covers `Action`/`action`, but `PreemptionEpoch` and `preemption_epoch` differ by an underscore, not just case — case-insensitive matching doesn't ignore separators. Result: every preempt response in HTTP mode silently lost the epoch, and the scheduler rejected the worker's follow-up `SaveCheckpoint` and `ReportPreempted` calls with 409 Conflict. The in-process test path never went through JSON; the Kubernetes demo was the first exercise of the full HTTP preemption round-trip. One JSON tag fix; everything worked.
 
 ## What's Next
 
