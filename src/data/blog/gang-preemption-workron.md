@@ -1,7 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-04-28T10:00:00Z
-modDatetime: 2026-05-05T10:00:00Z
+modDatetime: 2026-05-19T10:00:00Z
 title: "Draining the Gang: Coordinated Preemption with Checkpoint/Resume"
 slug: gang-preemption-workron
 featured: true
@@ -218,19 +218,25 @@ A few things I got wrong in the first draft:
 
 ## Deploying to Kubernetes and Watching It Actually Drain
 
-Everything above ran on a single-process scheduler with workers as goroutines. The gang-preemption tests cover the state machine, but they don't exercise the network — no JSON serialization, no service discovery, no two scheduler replicas fighting over a real Postgres advisory lock. Until I packaged the system into a Kubernetes cluster, the multi-scheduler coordination story was a code review, not a demo.
+I deployed Workron to Kubernetes. Concretely: scheduler as a 2-replica `Deployment` coordinated through `pg_try_advisory_xact_lock`, workers as a 3-replica `Deployment` polling over an in-cluster `Service`, Postgres as a `StatefulSet` with a `PersistentVolumeClaim`, all wired up with Kustomize manifests split into a cloud-agnostic base and a local kind overlay. Liveness probes hit `/healthz`, readiness probes hit `/readyz` (which pings the store with a 1-second budget via a new optional `Pinger` interface). Init containers block startup until each pod's dependency is reachable, so the cluster comes up restart-free instead of crash-looping while pods wait for Postgres or for the scheduler service. `make k8s-up` brings the whole stack up in about two minutes; `kubectl get pods -n workron` shows six pods Running with zero restarts.
 
-So I deployed it to a local Kubernetes cluster (kind): scheduler as a 2-replica `Deployment` coordinated by `pg_try_advisory_xact_lock`, three worker pods polling over an in-cluster Service, Postgres as a `StatefulSet`, all wired up via Kustomize manifests. The same drain code runs unchanged. `make k8s-up` brings the stack up; `make k8s-demo` submits a 3-task `demo:sleep 60` gang, fails one task, watches the siblings drain (each emits a 94-byte synthetic checkpoint), and waits for the gang to be re-admitted. On the next claim, all three workers log the field that proves resume happened:
+That deployment shape is the validation step the project needed. Everything above ran on a single-process scheduler with workers as goroutines. The gang-preemption tests cover the state machine, but they don't exercise the network, no JSON serialization between scheduler and worker, no Kubernetes Service discovery, no two scheduler replicas fighting over a real Postgres advisory lock. Until the system actually ran in a cluster, the multi-scheduler coordination story was a code review, not a demo. The Kubernetes deployment makes the claim concrete: two scheduler pods log interleaved, and only one of them acquires the reaper / gang-admission advisory lock per tick. The other handles HTTP traffic. The split is observable in `kubectl logs -l app=workron-scheduler -f`, which is what the resume bullet about advisory-lock coordination now actually points to.
+
+The drain code itself runs unchanged. `make k8s-demo` submits a 3-task `demo:sleep 60` gang and lets the worker Deployment pods claim it through their normal polling loop, no `curl`-driven `/jobs/next` calls; claims come from real in-cluster pods. Then it fails one task to trigger preemption, watches the siblings drain through `preempting` → `preempted`, and waits for the gang to be re-admitted. On the next claim, all three workers log the field that proves resume happened:
 
 ```
 "job picked up" attempt=1 checkpoint_data_present=true checkpoint_data_bytes=101
 ```
 
-The 101 bytes is the original 94 plus base64 padding, exactly what the scheduler is supposed to inject as `CHECKPOINT_DATA`. End-to-end runtime: about 50 seconds, all running inside real Kubernetes pods.
+The 101 bytes is the original 94-byte synthetic checkpoint plus base64 padding, exactly what the scheduler is supposed to inject as `CHECKPOINT_DATA`. End-to-end runtime: about 50 seconds, all running inside real Kubernetes pods.
 
 ![Workron gang-preemption demo running in a kind cluster](https://github.com/lrdinsu/workron/raw/main/docs/k8s-demo.gif)
 
-The demo found a real bug, and it found it in a way the unit tests couldn't have. The worker decodes heartbeat responses into `store.HeartbeatResult`, which originally had no JSON tags. The server emits snake_case (`{"action":"preempt","preemption_epoch":5}`), and Go's `encoding/json` falls back to case-insensitive matching when no tag is present. That covers `Action`/`action`, but `PreemptionEpoch` and `preemption_epoch` differ by an underscore, not just case — case-insensitive matching doesn't ignore separators. Result: every preempt response in HTTP mode silently lost the epoch, and the scheduler rejected the worker's follow-up `SaveCheckpoint` and `ReportPreempted` calls with 409 Conflict. The in-process test path never went through JSON; the Kubernetes demo was the first exercise of the full HTTP preemption round-trip. One JSON tag fix; everything worked.
+The demo found a real bug, and it found it in a way the unit tests couldn't have. The worker decodes heartbeat responses into `store.HeartbeatResult`, which originally had no JSON tags. The server emits snake_case (`{"action":"preempt","preemption_epoch":5}`), and Go's `encoding/json` falls back to case-insensitive matching when no tag is present. That covers `Action`/`action`, but `PreemptionEpoch` and `preemption_epoch` differ by an underscore, not just case (case-insensitive matching doesn't ignore separators). It leads to a result that every preempt response in HTTP mode silently lost the epoch, and the scheduler rejected the worker's follow-up `SaveCheckpoint` and `ReportPreempted` calls with 409 Conflict. The in-process test path never went through JSON and the Kubernetes deployment was the first exercise of the full HTTP preemption round-trip. So I added one JSON tag and it fixed everything. Integration testing finding a bug that unit tests couldn't is exactly the reason for shipping to a real cluster in the first place.
+
+Pod-kill drills back the deployment story up. Deleting both scheduler replicas at once produces about one second of `000` responses while the new pods come up; `/health` then returns `200` continuously. Deleting the Postgres pod flips `/readyz` to `503` for ~7 seconds (the connection-refused window) and back to `200` once the StatefulSet's replacement pod is reachable, exactly what a readiness probe is supposed to do, removing the pod from the Service while the dependency is down rather than killing it outright. Worker pods restart cleanly and re-register against the scheduler within seconds.
+
+The kustomize base manifests are cloud-agnostic. The local kind overlay carries the NodePort Service, the dev Postgres password, and the `:dev` image tags; everything else lives in the base. A future EKS or GKE overlay would swap the in-cluster Postgres for managed RDS (via External Secrets Operator), replace the NodePort with an Ingress plus cert-manager, and pull images from a registry like ECR. That is a sibling overlay under `deploy/k8s/overlays/`, not a rewrite of the base. The base/overlay split is the reason kustomize was chosen over Helm or raw YAML, moving from "runs on my laptop" to "runs on EKS" stays a manifests-only change, with no Go code touched.
 
 ## What's Next
 
