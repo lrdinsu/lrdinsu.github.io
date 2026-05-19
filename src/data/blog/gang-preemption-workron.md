@@ -1,7 +1,7 @@
 ---
 author: Lynn Wang
 pubDatetime: 2026-04-28T10:00:00Z
-modDatetime: 2026-05-19T10:00:00Z
+modDatetime: 2026-05-12T10:00:00Z
 title: "Draining the Gang: Coordinated Preemption with Checkpoint/Resume"
 slug: gang-preemption-workron
 featured: true
@@ -26,9 +26,7 @@ This post covers the fix. A gang task failing (or its worker dying) while siblin
 
 ## Why FailGang Wasn't Enough
 
-The existing `FailGang` method only touched `blocked`, `reserved`, and `pending` siblings. Running tasks were deliberately left alone. The reasoning from the last post: "the other workers will detect the failure themselves through a broken NCCL connection, and report failure on their own." And that does happen in theory. In practice, each running worker fails on its own timeline, each `/fail` call lands separately, and there is no atomic moment where the whole gang becomes eligible for re-admission.
-
-During that window, the scheduler has no way to signal "stop what you're doing, the gang is dead." Each worker keeps burning resources and retries on individual failures that are not really individual. By the time everything settles, the gang might have exhausted `MaxRetries` on two tasks even though only one was the actual root cause.
+The existing `FailGang` method only touched `blocked`, `reserved`, and `pending` siblings. Running tasks were left to fail on their own through NCCL peer-detection or heartbeat timeout. That works eventually, but each running worker fails on its own timeline, retries land separately, and the gang might exhaust `MaxRetries` on two tasks when only one was the actual root cause. There is no atomic moment where the whole gang becomes eligible for re-admission.
 
 Preemption is the missing half. `FailGang` handles siblings that haven't started yet. `PreemptGang` handles siblings that have.
 
@@ -169,6 +167,8 @@ A few deliberate constraints:
 - The epoch must match. A stale save from an earlier drain round gets a 409. This is the same epoch-guarding pattern as `/preempted`.
 - Base64 in `CHECKPOINT_DATA` is a binary-safety measure for env-var transport, not a design statement. Anything larger than "demo-scale" should go through a side channel (S3, a shared volume), not through an environment variable. The plan doc and the field's help text both call this out.
 
+One small generalization I almost missed: the env-building function started gang-specific because checkpoint injection was gang-specific. Then it became clear that a non-gang job can also carry a checkpoint from a previous preemption round, if it later gets gang-scheduled and preempted. The helper became `buildJobEnv`, called on every claim, injecting `CHECKPOINT_DATA` whenever there are stored bytes. Easy fix once the assumption was noticed.
+
 The test flow mirrors what a real ML workload would look like: worker receives preempt, writes its last-step checkpoint, posts it, process exits. New worker claims the task after re-admission, sees `CHECKPOINT_DATA` in its env, base64-decodes it, resumes from step N instead of step 0.
 
 ## The Drain Completer
@@ -204,45 +204,13 @@ gang reserved            gang_id=… gang_size=3
 
 Grepping for one `gang_id` tells you exactly what happened and when. That was a deliberate choice during the observability work: epoch-labeled log lines let me tell two different drain rounds apart for the same gang, which matters when something weird happens and I'm tracing through a failure.
 
-## What I Got Wrong the First Time
-
-A few things I got wrong in the first draft:
-
-**Non-running siblings in `preempting`.** The initial version put every sibling into `preempting` at drain start, uniform state, trivial completion check. But `preempting` carries a specific contract: there is a live process, a worker is waiting for the signal, a worker will ack. A reserved or pending task has none of that. Once I wrote out what the worker was supposed to do with a preempt signal on a task it hadn't claimed, the problem was obvious. Non-running siblings go straight to `blocked`. The gang is heterogeneous during drain. That is fine.
-
-**Retry refund in `CompletePreemption`.** The first plan decremented every drained task's `Attempts` on the way back to `blocked`. Preemption is not a real failure; it should not burn retry budget. That logic holds for siblings. It does not hold for the trigger. Trace three rounds: task A fails → drain → `CompletePreemption` decrements everyone back to zero → re-admit → A fails again. A's `Attempts` never exceeds one. `MaxRetries` is unreachable. Infinite loop. Moving the refund into `PreemptGang`, where the trigger's ID is in scope, is what fixes it. The trigger's increment stays. Siblings are cleared. That single kept bump is the whole signal that distinguishes a real failure from a scheduler-driven tear-down.
-
-**Checkpoints during `running`.** The first interface allowed saves any time a job was `running`. It seemed like a useful generalization, as periodic saves, not just drain-window saves. But it raises questions: which checkpoint surfaces on re-claim if there are multiple? What if the job saves every minute and the row bloats? Restricting saves to `preempting` avoids all of that. The window where a checkpoint actually matters is exactly the window when a job is being told to stop. That is when you want to save. Anything else is out of scope until there is a concrete reason to add it.
-
-**`buildGangEnv` scoped to gang claims.** The env-building function started as a gang-specific helper because checkpoint injection was gang-specific. Then it became clear: a non-gang job can also have a checkpoint from a previous preemption round if it later gets gang-scheduled and preempted. Renamed to `buildJobEnv`, called on every claim, injects `CHECKPOINT_DATA` whenever there are stored bytes. Straightforward fix once the assumption was noticed.
-
-## Deploying to Kubernetes and Watching It Actually Drain
-
-I deployed Workron to Kubernetes. Concretely: scheduler as a 2-replica `Deployment` coordinated through `pg_try_advisory_xact_lock`, workers as a 3-replica `Deployment` polling over an in-cluster `Service`, Postgres as a `StatefulSet` with a `PersistentVolumeClaim`, all wired up with Kustomize manifests split into a cloud-agnostic base and a local kind overlay. Liveness probes hit `/healthz`, readiness probes hit `/readyz` (which pings the store with a 1-second budget via a new optional `Pinger` interface). Init containers block startup until each pod's dependency is reachable, so the cluster comes up restart-free instead of crash-looping while pods wait for Postgres or for the scheduler service. `make k8s-up` brings the whole stack up in about two minutes; `kubectl get pods -n workron` shows six pods Running with zero restarts.
-
-That deployment shape is the validation step the project needed. Everything above ran on a single-process scheduler with workers as goroutines. The gang-preemption tests cover the state machine, but they don't exercise the network, no JSON serialization between scheduler and worker, no Kubernetes Service discovery, no two scheduler replicas fighting over a real Postgres advisory lock. Until the system actually ran in a cluster, the multi-scheduler coordination story was a code review, not a demo. The Kubernetes deployment makes the claim concrete: two scheduler pods log interleaved, and only one of them acquires the reaper / gang-admission advisory lock per tick. The other handles HTTP traffic. The split is observable in `kubectl logs -l app=workron-scheduler -f`, which is what the resume bullet about advisory-lock coordination now actually points to.
-
-The drain code itself runs unchanged. `make k8s-demo` submits a 3-task `demo:sleep 60` gang and lets the worker Deployment pods claim it through their normal polling loop, no `curl`-driven `/jobs/next` calls; claims come from real in-cluster pods. Then it fails one task to trigger preemption, watches the siblings drain through `preempting` → `preempted`, and waits for the gang to be re-admitted. On the next claim, all three workers log the field that proves resume happened:
-
-```
-"job picked up" attempt=1 checkpoint_data_present=true checkpoint_data_bytes=101
-```
-
-The 101 bytes is the original 94-byte synthetic checkpoint plus base64 padding, exactly what the scheduler is supposed to inject as `CHECKPOINT_DATA`. End-to-end runtime: about 50 seconds, all running inside real Kubernetes pods.
-
-![Workron gang-preemption demo running in a kind cluster](https://github.com/lrdinsu/workron/raw/main/docs/k8s-demo.gif)
-
-The demo found a real bug, and it found it in a way the unit tests couldn't have. The worker decodes heartbeat responses into `store.HeartbeatResult`, which originally had no JSON tags. The server emits snake_case (`{"action":"preempt","preemption_epoch":5}`), and Go's `encoding/json` falls back to case-insensitive matching when no tag is present. That covers `Action`/`action`, but `PreemptionEpoch` and `preemption_epoch` differ by an underscore, not just case (case-insensitive matching doesn't ignore separators). It leads to a result that every preempt response in HTTP mode silently lost the epoch, and the scheduler rejected the worker's follow-up `SaveCheckpoint` and `ReportPreempted` calls with 409 Conflict. The in-process test path never went through JSON and the Kubernetes deployment was the first exercise of the full HTTP preemption round-trip. So I added one JSON tag and it fixed everything. Integration testing finding a bug that unit tests couldn't is exactly the reason for shipping to a real cluster in the first place.
-
-Pod-kill drills back the deployment story up. Deleting both scheduler replicas at once produces about one second of `000` responses while the new pods come up; `/health` then returns `200` continuously. Deleting the Postgres pod flips `/readyz` to `503` for ~7 seconds (the connection-refused window) and back to `200` once the StatefulSet's replacement pod is reachable, exactly what a readiness probe is supposed to do, removing the pod from the Service while the dependency is down rather than killing it outright. Worker pods restart cleanly and re-register against the scheduler within seconds.
-
-The kustomize base manifests are cloud-agnostic. The local kind overlay carries the NodePort Service, the dev Postgres password, and the `:dev` image tags; everything else lives in the base. A future EKS or GKE overlay would swap the in-cluster Postgres for managed RDS (via External Secrets Operator), replace the NodePort with an Ingress plus cert-manager, and pull images from a registry like ECR. That is a sibling overlay under `deploy/k8s/overlays/`, not a rewrite of the base. The base/overlay split is the reason kustomize was chosen over Helm or raw YAML, moving from "runs on my laptop" to "runs on EKS" stays a manifests-only change, with no Go code touched.
-
 ## What's Next
 
 The preemption infrastructure is gang-internal only. That is deliberate scope management, the master plan has priority-based preemption and cross-queue quota reclaim as separate features that layer on top. Those will use the same `preempting` state, the same heartbeat signal, the same checkpoint contract. What changes is the triggering logic: "my gang needs 4 GPUs, 3 are free, 1 is running a lower-priority job, preempt it." That trigger layer doesn't exist yet.
 
 The executor's SIGTERM + grace + SIGKILL pattern is also reusable for plain job cancellation. A cancel API would plug into the same executor stop channel and reuse the same grace window.
+
+I later took this drain code to a local Kubernetes deployment as a validation step. The cluster surfaced a JSON serialization bug that the in-process tests had no way to hit, that story is in a [separate post](/posts/k8s-deployment-workron).
 
 Full source: [github.com/lrdinsu/workron](https://github.com/lrdinsu/workron)
 
